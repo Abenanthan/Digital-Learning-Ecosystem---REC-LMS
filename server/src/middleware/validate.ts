@@ -7,7 +7,7 @@
  */
 
 import { Request, Response, NextFunction } from "express";
-import { AnyZodObject, ZodError } from "zod";
+import { ZodError, ZodTypeAny } from "zod";
 
 /**
  * Validate `req.body` against a Zod schema.
@@ -15,10 +15,10 @@ import { AnyZodObject, ZodError } from "zod";
  * @example
  * router.post("/register", validate(registerSchema), registerHandler);
  */
-export function validate(schema: AnyZodObject) {
+export function validate(schema: ZodTypeAny) {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
-      schema.parse(req.body);
+      req.body = schema.parse(req.body);
       next();
     } catch (error) {
       if (error instanceof ZodError) {

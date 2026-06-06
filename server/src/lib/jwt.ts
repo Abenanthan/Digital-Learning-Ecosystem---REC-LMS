@@ -3,10 +3,12 @@
  *
  * Handles generation and verification of access & refresh token pairs.
  * Access tokens are short-lived (carried in Authorization header).
- * Refresh tokens are long-lived (stored in httpOnly cookie + DB).
+ * Refresh tokens are long-lived (stored in httpOnly cookie + Redis).
  */
 
 import jwt from "jsonwebtoken";
+
+type JwtExpiresIn = NonNullable<jwt.SignOptions["expiresIn"]>;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -35,12 +37,12 @@ function getRefreshSecret(): string {
   return secret;
 }
 
-function getAccessExpiry(): string {
-  return process.env.JWT_ACCESS_EXPIRY || "15m";
+function getAccessExpiry(): JwtExpiresIn {
+  return (process.env.JWT_ACCESS_EXPIRY || "15m") as JwtExpiresIn;
 }
 
-function getRefreshExpiry(): string {
-  return process.env.JWT_REFRESH_EXPIRY || "7d";
+function getRefreshExpiry(): JwtExpiresIn {
+  return (process.env.JWT_REFRESH_EXPIRY || "7d") as JwtExpiresIn;
 }
 
 // ─── Token generation ────────────────────────────────────────────────────────

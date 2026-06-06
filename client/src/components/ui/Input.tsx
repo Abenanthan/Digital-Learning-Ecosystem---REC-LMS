@@ -1,22 +1,12 @@
 import React, { forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 
-// ─── Variant Styles ─────────────────────────────────────────────────────────────
-
-const inputVariants = {
-  default:
-    'border border-gray-300 bg-white focus:border-primary-500',
-  filled:
-    'border border-transparent bg-gray-100 focus:bg-white focus:border-primary-500',
-} as const;
-
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
   helperText?: string;
-  variant?: keyof typeof inputVariants;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   wrapperClassName?: string;
@@ -24,7 +14,7 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 
 // ─── Component ──────────────────────────────────────────────────────────────────
 
-const Input = forwardRef<HTMLInputElement, InputProps>(
+export const Input = forwardRef<HTMLInputElement, InputProps>(
   (
     {
       className,
@@ -32,7 +22,6 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
       label,
       error,
       helperText,
-      variant = 'default',
       leftIcon,
       rightIcon,
       id,
@@ -48,7 +37,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-medium text-gray-700 mb-1.5"
+            className="mb-1.5 block text-sm font-medium text-gray-300"
           >
             {label}
           </label>
@@ -57,7 +46,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         {/* Input wrapper with optional icons */}
         <div className="relative">
           {leftIcon && (
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
               {leftIcon}
             </span>
           )}
@@ -67,19 +56,21 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             className={cn(
               // Base
-              'w-full rounded-lg px-4 py-2.5 text-sm text-gray-900',
-              'placeholder:text-gray-400',
-              'transition-colors duration-200',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500/20',
-              // Variant
-              inputVariants[variant],
+              'w-full rounded-xl border bg-dark-700/50 px-4 py-2.5 text-sm text-white',
+              'placeholder:text-gray-500',
+              'transition-all duration-200',
+              'outline-none',
+              // Default border
+              'border-white/10',
+              // Focus state
+              'focus:border-primary-500/50 focus:ring-1 focus:ring-primary-500/25',
               // Error state
-              error && 'border-red-500 focus:border-red-500 focus:ring-red-500/20',
+              error && 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/25',
               // Icons padding
               leftIcon && 'pl-10',
               rightIcon && 'pr-10',
               // Disabled
-              'disabled:opacity-50 disabled:cursor-not-allowed',
+              'disabled:cursor-not-allowed disabled:opacity-50',
               className,
             )}
             aria-invalid={!!error}
@@ -88,7 +79,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           />
 
           {rightIcon && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">
               {rightIcon}
             </span>
           )}
@@ -98,7 +89,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         {error && (
           <p
             id={`${inputId}-error`}
-            className="mt-1.5 text-sm text-red-500"
+            className="mt-1.5 text-sm text-red-400"
             role="alert"
           >
             {error}
@@ -107,7 +98,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
 
         {/* Helper text */}
         {!error && helperText && (
-          <p className="mt-1.5 text-sm text-gray-400">{helperText}</p>
+          <p className="mt-1.5 text-sm text-gray-500">{helperText}</p>
         )}
       </div>
     );

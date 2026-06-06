@@ -1,9 +1,12 @@
 /**
  * Authentication & Authorization Middleware
  *
- * • `authenticate` – verifies the Bearer access token and attaches the
+ * • `authenticateToken` – verifies the Bearer access token and attaches the
  *   decoded payload to `req.user`.
- * • `authorize(...roles)` – restricts access to the listed roles.
+ * • `authorizeRole(...roles)` – restricts access to the listed roles.
+ *
+ * The older `authenticate` / `authorize` names are re-exported as aliases
+ * so existing route files continue to compile without changes.
  */
 
 import { Request, Response, NextFunction } from "express";
@@ -14,37 +17,41 @@ import { verifyAccessToken, DecodedToken } from "../lib/jwt";
 declare global {
   namespace Express {
     interface Request {
-      /** Populated by the `authenticate` middleware after JWT verification. */
+      /** Populated by the `authenticateToken` middleware after JWT verification. */
       user?: DecodedToken;
     }
   }
 }
 
-// ─── Authenticate ────────────────────────────────────────────────────────────
+// ─── authenticateToken ──────────────────────────────────────────────────────
 
 /**
- * Extracts the Bearer token from the Authorization header, verifies it,
+ * Extracts the Bearer token from the `Authorization` header, verifies it,
  * and attaches the decoded payload to `req.user`.
+ *
+ * Responds with:
+ *   401 – missing or malformed header
+ *   401 – invalid / expired token
  */
-export function authenticate(
+export function authenticateToken(
   req: Request,
   res: Response,
   next: NextFunction
 ): void {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({
+      success: false,
+      message: "Authentication required. Please provide a valid token.",
+    });
+    return;
+  }
+
+  const token = authHeader.split(" ")[1];
+
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res.status(401).json({
-        success: false,
-        message: "Authentication required. Please provide a valid token.",
-      });
-      return;
-    }
-
-    const token = authHeader.split(" ")[1];
     const decoded = verifyAccessToken(token);
-
     req.user = decoded;
     next();
   } catch {
@@ -55,16 +62,17 @@ export function authenticate(
   }
 }
 
-// ─── Authorize ───────────────────────────────────────────────────────────────
+// ─── authorizeRole ──────────────────────────────────────────────────────────
 
 /**
  * Returns middleware that checks whether `req.user.role` is among the
- * allowed roles. Must be used *after* `authenticate`.
+ * allowed roles.  Must be used **after** `authenticateToken`.
  *
  * @example
- * router.post("/", authenticate, authorize("ADMIN", "INSTRUCTOR"), handler);
+ * router.get("/admin", authenticateToken, authorizeRole("ADMIN"), handler);
+ * router.post("/", authenticateToken, authorizeRole("ADMIN", "TEACHER"), handler);
  */
-export function authorize(...roles: string[]) {
+export function authorizeRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({
@@ -77,7 +85,7 @@ export function authorize(...roles: string[]) {
     if (!roles.includes(req.user.role)) {
       res.status(403).json({
         success: false,
-        message: "You do not have permission to perform this action.",
+        message: `Access denied. Required role(s): ${roles.join(", ")}.`,
       });
       return;
     }
@@ -85,3 +93,8 @@ export function authorize(...roles: string[]) {
     next();
   };
 }
+
+// ─── Aliases (backward-compatibility) ───────────────────────────────────────
+
+export const authenticate = authenticateToken;
+export const authorize = authorizeRole;

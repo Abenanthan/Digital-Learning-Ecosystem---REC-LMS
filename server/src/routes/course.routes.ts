@@ -65,12 +65,10 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
         where,
         include: {
           category: true,
-          instructor: {
+          teacher: {
             select: {
               id: true,
-              firstName: true,
-              lastName: true,
-              avatar: true,
+              name: true,
             },
           },
           chapters: { where: { isPublished: true }, select: { id: true } },
@@ -107,13 +105,10 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
       where: { id: req.params.id },
       include: {
         category: true,
-        instructor: {
+        teacher: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
-            avatar: true,
-            bio: true,
+            name: true,
           },
         },
         chapters: {

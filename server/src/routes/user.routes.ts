@@ -18,10 +18,7 @@ const router = Router();
 // ─── Validation ──────────────────────────────────────────────────────────────
 
 const updateUserSchema = z.object({
-  firstName: z.string().min(1).max(50).optional(),
-  lastName: z.string().min(1).max(50).optional(),
-  bio: z.string().max(500).optional(),
-  avatar: z.string().url("Avatar must be a valid URL").optional(),
+  name: z.string().min(2).max(100).optional(),
 });
 
 // ─── Fields we never leak to clients ─────────────────────────────────────────
@@ -29,12 +26,8 @@ const updateUserSchema = z.object({
 const PUBLIC_USER_SELECT = {
   id: true,
   email: true,
-  firstName: true,
-  lastName: true,
+  name: true,
   role: true,
-  avatar: true,
-  bio: true,
-  isVerified: true,
   createdAt: true,
 } as const;
 
@@ -65,8 +58,7 @@ router.get(
 
       if (search) {
         where.OR = [
-          { firstName: { contains: search, mode: "insensitive" } },
-          { lastName: { contains: search, mode: "insensitive" } },
+          { name: { contains: search, mode: "insensitive" } },
           { email: { contains: search, mode: "insensitive" } },
         ];
       }
@@ -110,7 +102,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
         ...PUBLIC_USER_SELECT,
         courses: {
           where: { isPublished: true },
-          select: { id: true, title: true, slug: true, thumbnail: true },
+          select: { id: true, title: true, thumbnail: true },
         },
         _count: { select: { enrollments: true } },
       },
@@ -153,10 +145,7 @@ router.patch(
       const updated = await prisma.user.update({
         where: { id: req.params.id },
         data: {
-          firstName: req.body.firstName,
-          lastName: req.body.lastName,
-          bio: req.body.bio,
-          avatar: req.body.avatar,
+          name: req.body.name,
         },
         select: PUBLIC_USER_SELECT,
       });

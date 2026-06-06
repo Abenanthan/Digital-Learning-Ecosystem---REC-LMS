@@ -1,10 +1,10 @@
 /**
  * Auth Routes
  *
- * POST /register  – Create a new user account
- * POST /login     – Authenticate and receive token pair
- * POST /refresh   – Rotate tokens using the refresh cookie
- * POST /logout    – Clear refresh token
+ * POST /register  – Create a new user account (student or teacher)
+ * POST /login     – Authenticate and receive JWT access + refresh tokens
+ * POST /refresh   – Rotate tokens using the refresh cookie/body (Redis-backed)
+ * POST /logout    – Invalidate the refresh token in Redis
  * GET  /me        – Return the authenticated user's profile
  */
 
@@ -16,7 +16,12 @@ import {
   verifyRefreshToken,
   TokenPayload,
 } from "../lib/jwt";
-import { authenticate } from "../middleware/auth";
+import {
+  storeRefreshToken,
+  getRefreshToken,
+  deleteRefreshToken,
+} from "../lib/redis";
+import { authenticateToken } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { registerSchema, loginSchema } from "../schemas/auth.schema";
 import { AppError } from "../middleware/errorHandler";
@@ -30,9 +35,12 @@ const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "strict" as const,
-  path: "/api/v1/auth",
+  path: "/api",
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 };
+
+/** Paths used by current and legacy auth cookie configurations. */
+const REFRESH_COOKIE_CLEAR_PATHS = ["/api", "/api/v1/auth", "/api/auth"];
 
 /** Build a standard token payload from a user record. */
 function toPayload(user: {
@@ -43,6 +51,59 @@ function toPayload(user: {
   return { userId: user.id, email: user.email, role: user.role };
 }
 
+/** Sanitised user object returned in API responses. */
+function sanitiseUser(user: {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  createdAt: Date;
+}) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    createdAt: user.createdAt,
+  };
+}
+
+/** Normalize supported registration body shapes into the Prisma `name` field. */
+function getDisplayName(body: {
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+}): string {
+  return (
+    body.name ?? [body.firstName, body.lastName].filter(Boolean).join(" ")
+  ).trim();
+}
+
+/** Read refresh token from JSON body first, then from httpOnly cookie. */
+function getRefreshTokenFromRequest(req: Request): string | undefined {
+  const bodyToken =
+    typeof req.body?.refreshToken === "string"
+      ? req.body.refreshToken.trim()
+      : undefined;
+  const cookieToken =
+    typeof req.cookies?.refreshToken === "string"
+      ? req.cookies.refreshToken
+      : undefined;
+
+  return bodyToken || cookieToken;
+}
+
+function clearRefreshCookie(res: Response): void {
+  REFRESH_COOKIE_CLEAR_PATHS.forEach((path) => {
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict" as const,
+      path,
+    });
+  });
+}
+
 // ─── POST /register ──────────────────────────────────────────────────────────
 
 router.post(
@@ -50,7 +111,8 @@ router.post(
   validate(registerSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { email, password, firstName, lastName } = req.body;
+      const { email, password, role } = req.body;
+      const name = getDisplayName(req.body);
 
       // Check for existing user
       const existing = await prisma.user.findUnique({ where: { email } });
@@ -59,20 +121,22 @@ router.post(
       }
 
       // Hash password & create user
-      const passwordHash = await bcrypt.hash(password, 12);
+      const hashedPassword = await bcrypt.hash(password, 12);
       const user = await prisma.user.create({
-        data: { email, passwordHash, firstName, lastName },
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          role,
+        },
       });
 
       // Generate tokens
       const payload = toPayload(user);
       const { accessToken, refreshToken } = generateTokenPair(payload);
 
-      // Persist refresh token hash
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { refreshToken },
-      });
+      // Store refresh token in Redis
+      await storeRefreshToken(user.id, refreshToken);
 
       // Set refresh cookie
       res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS);
@@ -82,13 +146,8 @@ router.post(
         message: "Account created successfully.",
         data: {
           accessToken,
-          user: {
-            id: user.id,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            role: user.role,
-          },
+          refreshToken,
+          user: sanitiseUser(user),
         },
       });
     } catch (error) {
@@ -113,7 +172,7 @@ router.post(
       }
 
       // Verify password
-      const isValid = await bcrypt.compare(password, user.passwordHash);
+      const isValid = await bcrypt.compare(password, user.password);
       if (!isValid) {
         throw new AppError("Invalid email or password.", 401);
       }
@@ -122,27 +181,19 @@ router.post(
       const payload = toPayload(user);
       const { accessToken, refreshToken } = generateTokenPair(payload);
 
-      // Persist refresh token
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { refreshToken },
-      });
+      // Store refresh token in Redis
+      await storeRefreshToken(user.id, refreshToken);
 
       // Set refresh cookie
       res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS);
 
-      res.json({
+      res.status(200).json({
         success: true,
         message: "Logged in successfully.",
         data: {
           accessToken,
-          user: {
-            id: user.id,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            role: user.role,
-          },
+          refreshToken,
+          user: sanitiseUser(user),
         },
       });
     } catch (error) {
@@ -157,39 +208,57 @@ router.post(
   "/refresh",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const token: string | undefined = req.cookies?.refreshToken;
+      const token = getRefreshTokenFromRequest(req);
 
       if (!token) {
         throw new AppError("Refresh token not found.", 401);
       }
 
-      // Verify token
-      const decoded = verifyRefreshToken(token);
+      // Verify JWT signature & expiry
+      let decoded;
+      try {
+        decoded = verifyRefreshToken(token);
+      } catch {
+        clearRefreshCookie(res);
+        throw new AppError("Invalid or expired refresh token.", 401);
+      }
 
-      // Check that the token matches what's stored (single-use rotation)
+      // Ensure it matches what is stored in Redis (single-use rotation)
+      const storedToken = await getRefreshToken(decoded.userId);
+      if (!storedToken || storedToken !== token) {
+        // Possible token reuse → invalidate to be safe
+        await deleteRefreshToken(decoded.userId);
+        clearRefreshCookie(res);
+        throw new AppError("Refresh token has been revoked.", 401);
+      }
+
+      // Verify user still exists
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
       });
-
-      if (!user || user.refreshToken !== token) {
-        throw new AppError("Invalid refresh token.", 401);
+      if (!user) {
+        await deleteRefreshToken(decoded.userId);
+        clearRefreshCookie(res);
+        throw new AppError("User no longer exists.", 401);
       }
 
-      // Issue new pair
+      // Issue new pair (rotation)
       const payload = toPayload(user);
       const { accessToken, refreshToken } = generateTokenPair(payload);
 
-      // Rotate stored token
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { refreshToken },
-      });
+      // Replace old token in Redis
+      await storeRefreshToken(user.id, refreshToken);
 
+      // Set new cookie
       res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS);
 
-      res.json({
+      res.status(200).json({
         success: true,
-        data: { accessToken },
+        data: {
+          accessToken,
+          refreshToken,
+          user: sanitiseUser(user),
+        },
       });
     } catch (error) {
       next(error);
@@ -201,24 +270,36 @@ router.post(
 
 router.post(
   "/logout",
-  authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Clear refresh token in DB
-      await prisma.user.update({
-        where: { id: req.user!.userId },
-        data: { refreshToken: null },
-      });
+      const token = getRefreshTokenFromRequest(req);
+
+      if (!token) {
+        clearRefreshCookie(res);
+        throw new AppError("Refresh token is required.", 400);
+      }
+
+      let decoded;
+      try {
+        decoded = verifyRefreshToken(token);
+      } catch {
+        clearRefreshCookie(res);
+        throw new AppError("Invalid or expired refresh token.", 401);
+      }
+
+      // Remove the refresh token from Redis if it is the active token.
+      const storedToken = await getRefreshToken(decoded.userId);
+      if (storedToken === token) {
+        await deleteRefreshToken(decoded.userId);
+      }
 
       // Clear cookie
-      res.clearCookie("refreshToken", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict" as const,
-        path: "/api/v1/auth",
-      });
+      clearRefreshCookie(res);
 
-      res.json({ success: true, message: "Logged out successfully." });
+      res.status(200).json({
+        success: true,
+        message: "Logged out successfully.",
+      });
     } catch (error) {
       next(error);
     }
@@ -229,20 +310,16 @@ router.post(
 
 router.get(
   "/me",
-  authenticate,
+  authenticateToken,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = await prisma.user.findUnique({
         where: { id: req.user!.userId },
         select: {
           id: true,
+          name: true,
           email: true,
-          firstName: true,
-          lastName: true,
           role: true,
-          avatar: true,
-          bio: true,
-          isVerified: true,
           createdAt: true,
         },
       });
@@ -251,7 +328,10 @@ router.get(
         throw new AppError("User not found.", 404);
       }
 
-      res.json({ success: true, data: { user } });
+      res.status(200).json({
+        success: true,
+        data: { user },
+      });
     } catch (error) {
       next(error);
     }
