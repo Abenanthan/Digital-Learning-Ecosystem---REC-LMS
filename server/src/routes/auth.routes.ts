@@ -35,12 +35,12 @@ const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "strict" as const,
-  path: "/api",
+  path: "/",
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 };
 
 /** Paths used by current and legacy auth cookie configurations. */
-const REFRESH_COOKIE_CLEAR_PATHS = ["/api", "/api/v1/auth", "/api/auth"];
+const REFRESH_COOKIE_CLEAR_PATHS = ["/", "/api", "/api/v1/auth", "/api/auth"];
 
 /** Build a standard token payload from a user record. */
 function toPayload(user: {

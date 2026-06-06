@@ -13,11 +13,11 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getDashboardPath, useAuth } from '@/context/AuthContext';
 
 // ─── Navigation Links ──────────────────────────────────────────────────────────
 
 const navLinks = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/courses', label: 'Courses', icon: BookOpen },
   { href: '/progress', label: 'Progress', icon: BarChart3 },
   { href: '/settings', label: 'Settings', icon: Settings },
@@ -27,7 +27,13 @@ const navLinks = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const dashboardHref = user ? getDashboardPath(user.role) : '/dashboard';
+  const links = [
+    { href: dashboardHref, label: 'Dashboard', icon: LayoutDashboard },
+    ...navLinks,
+  ];
 
   return (
     <>
@@ -41,7 +47,7 @@ export default function Sidebar() {
       >
         {/* ── Brand ───────────────────────────────────────────────────────── */}
         <div className="flex items-center h-16 px-4 border-b border-gray-100 shrink-0">
-          <Link href="/dashboard" className="flex items-center gap-3 overflow-hidden">
+          <Link href={dashboardHref} className="flex items-center gap-3 overflow-hidden">
             <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary-600 text-white shrink-0">
               <GraduationCap className="w-5 h-5" />
             </div>
@@ -55,7 +61,7 @@ export default function Sidebar() {
 
         {/* ── Navigation ──────────────────────────────────────────────────── */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navLinks.map((link) => {
+          {links.map((link) => {
             const Icon = link.icon;
             const isActive = pathname === link.href || pathname.startsWith(link.href + '/');
 

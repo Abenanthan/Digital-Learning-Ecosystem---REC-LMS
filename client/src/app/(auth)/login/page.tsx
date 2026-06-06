@@ -7,10 +7,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 
-import { useAuthStore } from '@/store/auth.store';
-import { Button } from '@/components/ui/Button';
+import { getDashboardPath, useAuth } from '@/context/AuthContext';
+import Button from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
 const loginSchema = z.object({
@@ -20,10 +20,26 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
+function getErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { message?: unknown } } }).response;
+    if (typeof response?.data?.message === 'string') {
+      return response.data.message;
+    }
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return 'Login failed. Please check your credentials and try again.';
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuthStore();
+  const { login, isLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const {
     register,
@@ -35,13 +51,15 @@ export default function LoginPage() {
   });
 
   const onSubmit = async (data: LoginFormData) => {
+    setFormError(null);
+
     try {
-      await login(data.email, data.password);
+      const user = await login(data.email, data.password);
       toast.success('Welcome back!');
-      router.push('/dashboard');
+      router.replace(getDashboardPath(user.role));
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Login failed. Please try again.';
-      toast.error(message);
+      const message = getErrorMessage(error);
+      setFormError(message);
     }
   };
 
@@ -51,6 +69,16 @@ export default function LoginPage() {
       <p className="mb-6 text-sm text-gray-400">Sign in to continue your learning journey</p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {formError && (
+          <div
+            className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-200"
+            role="alert"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{formError}</span>
+          </div>
+        )}
+
         <Input
           label="Email"
           type="email"
@@ -78,20 +106,7 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <div className="flex items-center justify-between text-sm">
-          <label className="flex items-center gap-2 text-gray-400">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-dark-400 bg-dark-700 text-primary-600 focus:ring-primary-500"
-            />
-            Remember me
-          </label>
-          <Link href="#" className="text-primary-400 transition-colors hover:text-primary-300">
-            Forgot password?
-          </Link>
-        </div>
-
-        <Button type="submit" className="w-full" isLoading={isSubmitting}>
+        <Button type="submit" className="w-full" isLoading={isSubmitting || isLoading}>
           Sign In
         </Button>
       </form>

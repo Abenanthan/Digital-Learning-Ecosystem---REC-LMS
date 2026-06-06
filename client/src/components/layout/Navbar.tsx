@@ -2,14 +2,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Search, Bell, User, Settings, LogOut } from 'lucide-react';
-import { useAuthStore } from '@/store/auth.store';
+import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 
 // ─── Component ──────────────────────────────────────────────────────────────────
 
 export default function Navbar() {
-  const { user, logout } = useAuthStore();
+  const router = useRouter();
+  const { user, logout } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -26,8 +28,10 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     await logout();
-    window.location.href = '/auth/login';
+    router.replace('/login');
   };
+
+  const userInitial = user?.name?.trim().charAt(0).toUpperCase() || 'U';
 
   return (
     <header className="sticky top-0 z-30 h-16 bg-white/80 backdrop-blur-md border-b border-gray-200">
@@ -78,11 +82,11 @@ export default function Navbar() {
               aria-haspopup="true"
             >
               <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white text-sm font-medium">
-                {user?.firstName?.[0] || 'U'}
+                {userInitial}
               </div>
               {user && (
                 <span className="hidden md:block text-sm font-medium text-gray-700">
-                  {user.firstName}
+                  {user.name}
                 </span>
               )}
             </button>
@@ -99,7 +103,7 @@ export default function Navbar() {
                 {/* User info */}
                 <div className="px-4 py-3 border-b border-gray-100">
                   <p className="text-sm font-medium text-gray-900">
-                    {user?.firstName} {user?.lastName}
+                    {user?.name}
                   </p>
                   <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                 </div>

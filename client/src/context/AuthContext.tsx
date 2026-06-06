@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import api, { setAccessTokenGetter } from '@/lib/api';
+import api, { setAccessTokenGetter, setAccessTokenSetter } from '@/lib/api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -52,6 +52,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Wire up the token getter so the Axios interceptor can read it
   useEffect(() => {
     setAccessTokenGetter(() => accessTokenRef.current);
+    setAccessTokenSetter((token) => {
+      accessTokenRef.current = token;
+    });
   }, []);
 
   // ── Bootstrap: attempt to restore session via refresh-token cookie ──────────

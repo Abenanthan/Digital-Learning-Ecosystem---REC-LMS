@@ -18,10 +18,17 @@ const api = axios.create({
 // access token without touching localStorage.
 
 type TokenGetter = () => string | null;
+type TokenSetter = (token: string | null) => void;
+
 let getAccessToken: TokenGetter = () => null;
+let setAccessToken: TokenSetter = () => undefined;
 
 export function setAccessTokenGetter(getter: TokenGetter) {
   getAccessToken = getter;
+}
+
+export function setAccessTokenSetter(setter: TokenSetter) {
+  setAccessToken = setter;
 }
 
 // ─── Request Interceptor ───────────────────────────────────────────────────────
@@ -98,6 +105,7 @@ api.interceptors.response.use(
         );
 
         const newToken: string = data.data.accessToken;
+        setAccessToken(newToken);
         processQueue(null, newToken);
 
         if (originalRequest.headers) {
@@ -106,6 +114,7 @@ api.interceptors.response.use(
 
         return api(originalRequest);
       } catch (refreshError) {
+        setAccessToken(null);
         processQueue(refreshError as AxiosError, null);
 
         // Redirect to login on refresh failure

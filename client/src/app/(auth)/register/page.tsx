@@ -7,16 +7,16 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, GraduationCap, Lock, Mail, User } from 'lucide-react';
 
-import { useAuthStore } from '@/store/auth.store';
-import { Button } from '@/components/ui/Button';
+import { getDashboardPath, useAuth } from '@/context/AuthContext';
+import Button from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { cn } from '@/lib/utils';
 
 const registerSchema = z
   .object({
-    firstName: z.string().min(2, 'First name must be at least 2 characters'),
-    lastName: z.string().min(2, 'Last name must be at least 2 characters'),
+    name: z.string().min(2, 'Name must be at least 2 characters').max(100),
     email: z.string().email('Please enter a valid email address'),
     password: z
       .string()
@@ -26,6 +26,7 @@ const registerSchema = z
         'Password must contain uppercase, lowercase, number, and special character'
       ),
     confirmPassword: z.string(),
+    role: z.enum(['STUDENT', 'TEACHER']),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Passwords do not match',
@@ -34,35 +35,70 @@ const registerSchema = z
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
+const roleOptions = [
+  {
+    value: 'STUDENT',
+    label: 'Student',
+    description: 'Learn from courses and track progress',
+    icon: GraduationCap,
+  },
+  {
+    value: 'TEACHER',
+    label: 'Teacher',
+    description: 'Create courses and manage learners',
+    icon: User,
+  },
+] as const;
+
+function getErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { message?: unknown } } }).response;
+    if (typeof response?.data?.message === 'string') {
+      return response.data.message;
+    }
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return 'Registration failed. Please check your details and try again.';
+}
+
 export default function RegisterPage() {
   const router = useRouter();
-  const { register: registerUser } = useAuthStore();
+  const { register: registerUser, isLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
-      firstName: '',
-      lastName: '',
+      name: '',
       email: '',
       password: '',
       confirmPassword: '',
+      role: 'STUDENT',
     },
   });
 
+  const selectedRole = watch('role');
+
   const onSubmit = async (data: RegisterFormData) => {
+    setFormError(null);
+
     try {
-      await registerUser(data.firstName, data.lastName, data.email, data.password);
+      const user = await registerUser(data.name, data.email, data.password, data.role);
       toast.success('Account created successfully!');
-      router.push('/dashboard');
+      router.replace(getDashboardPath(user.role));
     } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Registration failed. Please try again.';
-      toast.error(message);
+      const message = getErrorMessage(error);
+      setFormError(message);
     }
   };
 
@@ -72,21 +108,23 @@ export default function RegisterPage() {
       <p className="mb-6 text-sm text-gray-400">Join the REC Digital Learning Ecosystem</p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="First Name"
-            placeholder="John"
-            leftIcon={<User className="h-4 w-4" />}
-            error={errors.firstName?.message}
-            {...register('firstName')}
-          />
-          <Input
-            label="Last Name"
-            placeholder="Doe"
-            error={errors.lastName?.message}
-            {...register('lastName')}
-          />
-        </div>
+        {formError && (
+          <div
+            className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-200"
+            role="alert"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{formError}</span>
+          </div>
+        )}
+
+        <Input
+          label="Name"
+          placeholder="John Doe"
+          leftIcon={<User className="h-4 w-4" />}
+          error={errors.name?.message}
+          {...register('name')}
+        />
 
         <Input
           label="Email"
@@ -124,7 +162,62 @@ export default function RegisterPage() {
           {...register('confirmPassword')}
         />
 
-        <Button type="submit" className="w-full" isLoading={isSubmitting}>
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-300">
+            Role
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {roleOptions.map((role) => {
+              const Icon = role.icon;
+              const isSelected = selectedRole === role.value;
+
+              return (
+                <label
+                  key={role.value}
+                  className={cn(
+                    'cursor-pointer rounded-lg border p-3 transition-colors',
+                    'bg-dark-700/40 hover:border-primary-500/40',
+                    isSelected
+                      ? 'border-primary-500/70 ring-1 ring-primary-500/30'
+                      : 'border-white/10',
+                  )}
+                >
+                  <input
+                    type="radio"
+                    value={role.value}
+                    className="sr-only"
+                    {...register('role')}
+                  />
+                  <span className="flex items-start gap-3">
+                    <span
+                      className={cn(
+                        'mt-0.5 rounded-md p-1.5',
+                        isSelected ? 'bg-primary-600 text-white' : 'bg-dark-600 text-gray-400',
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-medium text-white">
+                        {role.label}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-5 text-gray-500">
+                        {role.description}
+                      </span>
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {errors.role?.message && (
+            <p className="mt-1.5 text-sm text-red-400" role="alert">
+              {errors.role.message}
+            </p>
+          )}
+        </div>
+
+        <Button type="submit" className="w-full" isLoading={isSubmitting || isLoading}>
           Create Account
         </Button>
       </form>
