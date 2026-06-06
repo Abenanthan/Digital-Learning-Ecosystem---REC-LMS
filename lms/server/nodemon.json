@@ -1,0 +1,6 @@
+{
+  "watch": ["src", "prisma", "../shared/src"],
+  "ext": "ts,json",
+  "ignore": ["dist", "uploads"],
+  "exec": "tsx src/index.ts"
+}

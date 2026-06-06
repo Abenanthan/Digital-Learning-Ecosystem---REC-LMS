@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(STUDENT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  courses Course[] @relation("TeacherCourses")
+
+  @@index([email])
+  @@index([role])
+}
+
+model Course {
+  id           String   @id @default(uuid())
+  title        String
+  description  String?  @db.Text
+  thumbnailUrl String?
+  teacherId    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teacher   User       @relation("TeacherCourses", fields: [teacherId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+  materials Material[]
+
+  @@index([teacherId])
+}
+
+model Lesson {
+  id          String  @id @default(uuid())
+  title       String
+  description String? @db.Text
+  videoUrl    String?
+  duration    Int     @default(0)
+  position    Int
+  courseId    String
+
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  materials Material[]
+
+  @@index([courseId])
+  @@index([courseId, position])
+}
+
+model Material {
+  id        String   @id @default(uuid())
+  title     String
+  fileUrl   String
+  fileType  String
+  courseId  String
+  lessonId  String?
+  createdAt DateTime @default(now())
+
+  course Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson Lesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+
+  @@index([courseId])
+  @@index([lessonId])
+}

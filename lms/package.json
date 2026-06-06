@@ -1,0 +1,26 @@
+{
+  "name": "local-lms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local LMS monorepo with Next.js, Express, Prisma, and shared TypeScript types.",
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @lms/server\" \"npm run dev -w @lms/client\"",
+    "build": "npm run build -w @lms/shared && npm run build -w @lms/server && npm run build -w @lms/client",
+    "typecheck": "npm run typecheck -w @lms/shared && npm run typecheck -w @lms/server && npm run typecheck -w @lms/client",
+    "db:migrate": "npm run db:migrate -w @lms/server",
+    "db:seed": "npm run db:seed -w @lms/server",
+    "db:studio": "npm run db:studio -w @lms/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  }
+}
